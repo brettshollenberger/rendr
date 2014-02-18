@@ -319,163 +319,8 @@ describe('fetcher', function() {
   });
 
   describe('fetch', function() {
-    beforeEach(function() {
-      fetcher.modelStore.clear();
-      fetcher.collectionStore.clear();
-      fetcher.off(null, null);
-    });
-
-    it("should be able to fetch a model", function(done) {
-      var fetchSpec;
-
-      fetchSpec = {
-        model: {
-          model: 'Listing',
-          params: {
-            id: 1
-          }
-        }
-      };
-      fetcher.pendingFetches.should.eql(0);
-      fetcher.fetch(fetchSpec, function(err, results) {
-        fetcher.pendingFetches.should.eql(0);
-        if (err) return done(err);
-        results.model.should.be.an.instanceOf(Listing);
-        results.model.toJSON().should.eql(getModelResponse('full', 1));
-        done();
-      });
-      fetcher.pendingFetches.should.eql(1);
-    });
-
-    it("should be able to fetch a collection", function(done) {
-      var fetchSpec;
-
-      fetchSpec = {
-        collection: {
-          collection: 'Listings'
-        }
-      };
-      fetcher.pendingFetches.should.eql(0);
-      fetcher.fetch(fetchSpec, function(err, results) {
-        fetcher.pendingFetches.should.eql(0);
-        if (err) return done(err);
-        results.collection.should.be.an.instanceOf(Listings);
-        results.collection.toJSON().should.eql(buildCollectionResponse());
-        done();
-      });
-      fetcher.pendingFetches.should.eql(1);
-    });
-
-    it("should be able to fetch both a model and a collection at the same time", function(done) {
-      var fetchSpec;
-
-      fetchSpec = {
-        model: {
-          model: 'Listing',
-          params: {
-            id: 1
-          }
-        },
-        collection: {
-          collection: 'Listings'
-        }
-      };
-      fetcher.pendingFetches.should.eql(0);
-      fetcher.fetch(fetchSpec, function(err, results) {
-        fetcher.pendingFetches.should.eql(0);
-        if (err) return done(err);
-        results.model.should.be.an.instanceOf(Listing);
-        results.model.toJSON().should.eql(getModelResponse('full', 1));
-        results.collection.should.be.an.instanceOf(Listings);
-        results.collection.toJSON().should.eql(buildCollectionResponse());
-        done();
-      });
-      fetcher.pendingFetches.should.eql(1);
-    });
-
-    it("should be able to fetch models from cache with custom idAttribute", function(done) {
-      var fetchSpec, someperson, userAttrs, User;
-
-      User = BaseModel.extend({
-        idAttribute: 'login'
-      });
-      User.id = 'User';
-
-      userAttrs = {
-        login: 'someperson',
-        name: 'Some Person'
-      };
-      someperson = new User(userAttrs);
-      addClassMapping.add('user', User);
-      fetcher.modelStore.set(someperson);
-      fetchSpec = {
-        model: {
-          model: 'user',
-          params: {
-            login: 'someperson'
-          }
-        }
-      };
-      fetcher.fetch(fetchSpec, {
-        readFromCache: true
-      }, function(err, results) {
-        if (err) return done(err);
-        results.model.should.be.an.instanceOf(User);
-        results.model.toJSON().should.eql(userAttrs);
-        done();
-      });
-    });
-
-    it("should be able to fetch a model from cache with other attributes", function(done) {
-      var fetchSpec;
-      var listingAttrs = {
-        id: 'myId',
-        name: 'New Name'
-      };
-      listingWithName = new Listing(listingAttrs);
-      fetcher.modelStore.set(listingWithName);
-
-      fetchSpec = {
-        model: {
-          model: 'Listing',
-          params: {
-            name: 'New Name'
-          }
-        }
-      };
-      fetcher.pendingFetches.should.eql(0);
-      fetcher.fetch(fetchSpec, {readFromCache: true}, function(err, results) {
-        fetcher.pendingFetches.should.eql(0);
-        if (err) return done(err);
-        results.model.should.be.an.instanceOf(Listing);
-        results.model.toJSON().should.eql(listingAttrs);
-        done();
-      });
-      fetcher.pendingFetches.should.eql(0);
-
-    });
-
-
-    it("should be able to re-fetch if already exists but is missing key", function(done) {
-      // First, fetch the collection, which has smaller versions of the models.
-      var fetchSpec;
-
-      fetchSpec = {
-        collection: {
-          collection: 'Listings'
-        }
-      };
-      fetcher.fetch(fetchSpec, {
-        writeToCache: true
-      }, function(err, results) {
-        if (err) return done(err);
-
-        results.collection.toJSON().should.eql(buildCollectionResponse());
-
-        // Make sure that the basic version is stored in modelStore.
-        fetcher.modelStore.get('Listing', 1).should.eql(getModelResponse('basic', 1));
-
-        // Then, fetch the single model, which should be cached.
+    var retrievedModel = new BaseModel(),
+        result = { model: retrievedModel },
         fetchSpec = {
           model: {
             model: 'Listing',
@@ -485,65 +330,80 @@ describe('fetcher', function() {
           }
         };
 
-        fetcher.fetch(fetchSpec, {
-          readFromCache: true
-        }, function(err, results) {
-          if (err) return done(err);
-          results.model.toJSON().should.eql(getModelResponse('basic', 1));
+    beforeEach(function() {
+      fetcher._retrieve = sinon.stub();
+    });
 
-          // Finally, fetch the single model, but specifiy that certain key must be present.
-          fetchSpec = {
-            model: {
-              model: 'Listing',
-              params: {
-                id: 1
-              },
-              ensureKeys: ['city']
-            }
-          };
-          fetcher.fetch(fetchSpec, {
-            readFromCache: true
-          }, function(err, results) {
-            if (err) return done(err);
-            results.model.toJSON().should.eql(getModelResponse('full', 1));
-            done();
-          });
-        });
+    it('should callback after calling _retrieve to fetch a model', function(done) {
+      fetcher._retrieve.yieldsAsync(null, result);
+      fetcher.fetch(fetchSpec, function (err, results) {
+        should.not.exist(err);
+        results.should.deep.equal(result);
+        fetcher._retrieve.should.have.been.calledOnce;
+        fetcher._retrieve.should.have.been.calledWith(fetchSpec);
+        done(err);
       });
     });
 
-    it("should emit events", function(done) {
-      var endEmitted, fetchSpec, startEmitted;
+    describe('options', function () {
+      it('should correctly set the default options on the serverside', function () {
+        fetcher.fetch(fetchSpec, function () {});
+        fetcher._retrieve.should.have.been.calledOnce;
+        fetcher._retrieve.should.have.been.calledWith(fetchSpec, { readFromCache: false, writeToCache: false });
+      });
 
-      startEmitted = false;
-      endEmitted = false;
-      fetcher.on('fetch:start', function(eventFetchSpec) {
-        startEmitted = true;
-        eventFetchSpec.should.eql(fetchSpec);
+      it('should override the default option for readFromCache when it is passed', function () {
+        fetcher.fetch(fetchSpec, { readFromCache: true }, function () {});
+        fetcher._retrieve.should.have.been.calledOnce;
+        fetcher._retrieve.should.have.been.calledWith(fetchSpec, { readFromCache: true, writeToCache: false });
       });
-      fetcher.on('fetch:end', function(eventFetchSpec) {
-        endEmitted = true;
-        eventFetchSpec.should.eql(fetchSpec);
+
+      it('should override the default option for writeToCache when it is passed', function () {
+        fetcher.fetch(fetchSpec, { writeToCache: true }, function () {});
+        fetcher._retrieve.should.have.been.calledOnce;
+        fetcher._retrieve.should.have.been.calledWith(fetchSpec, { readFromCache: false, writeToCache: true });
       });
-      fetchSpec = {
-        model: {
-          model: 'Listing',
-          params: {
-            id: 1
-          }
-        }
-      };
-      fetcher.fetch(fetchSpec, function(err, results) {
-        if (err) return done(err);
-        startEmitted.should.be.true;
-        endEmitted.should.be.true;
-        results.model.should.be.an.instanceOf(Listing);
-        results.model.toJSON().should.eql(getModelResponse('full', 1));
+    });
+
+    it('should count the number of pending fetches', function(done) {
+      fetcher._retrieve.yieldsAsync();
+
+      fetcher.pendingFetches.should.equal(0);
+      fetcher.fetch(fetchSpec, function (err) {
+        fetcher.pendingFetches.should.equal(0);
+        done(err);
+      });
+      fetcher.pendingFetches.should.equal(1);
+    });
+
+    it('should trigger the fetch:start and fetch:end event', function(done) {
+      var err = new Error('Test Error'),
+          startStub = sinon.stub(),
+          endStub = sinon.stub();
+
+      fetcher._retrieve.yieldsAsync(err, result);
+      fetcher.on('fetch:start', startStub);
+      fetcher.on('fetch:end', endStub);
+
+      fetcher.fetch(fetchSpec, function () {
+        endStub.should.have.been.calledOnce;
+        endStub.should.have.been.calledWith(fetchSpec, err, result);
         done();
       });
-      startEmitted.should.be.true;
-      endEmitted.should.be.false;
+      startStub.should.have.been.calledOnce;
+      startStub.should.have.been.calledWith(fetchSpec);
     });
+
+    it('should store the fetch result if writeToCache is set to true', function (done) {
+      fetcher.storeResults = sinon.stub();
+      fetcher._retrieve.yieldsAsync(null, result);
+      fetcher.fetch(fetchSpec, { writeToCache: true }, function () {
+        fetcher.storeResults.should.have.been.calledOnce;
+        fetcher.storeResults.should.have.been.calledWith(result);
+        done();
+      });
+    });
+
   });
 
   describe('needsFetch', function () {
