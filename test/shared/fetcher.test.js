@@ -546,6 +546,40 @@ describe('fetcher', function() {
     });
   });
 
+  describe('needsFetch', function () {
+    var spec;
+
+    beforeEach(function () {
+      spec = { model: 'ModelName', params: { id: 123 } };
+    });
+
+    it('should return true if no modelData is passed', function () {
+      fetcher.needsFetch(null, spec).should.be.true;
+    });
+
+    it('should return true if the ensured keys are not included in modelData', function () {
+      spec.ensureKeys = [ 'key1' ];
+      fetcher.needsFetch({ key2: 'value2' }, spec).should.be.true;
+    });
+
+    it('should return true if spec enforces a fetch via a boolean value', function () {
+      spec.needsFetch = true;
+      fetcher.needsFetch({ id: 123 }, spec).should.be.true;
+    });
+
+    it('should return true if spec enforces a fetch via a function', function () {
+      var modelData = { id: 123 };
+      spec.needsFetch = sinon.stub().returns(true);
+      fetcher.needsFetch(modelData, spec).should.be.true;
+      spec.needsFetch.should.have.been.calledOnce;
+      spec.needsFetch.should.have.been.calledWith(modelData);
+    });
+
+    it('should return false otherwise', function () {
+      fetcher.needsFetch({ id: 123 }, spec).should.be.false;
+    });
+  });
+
   describe('isMissingKeys', function() {
     before(function() {
       this.modelData = {
@@ -555,7 +589,7 @@ describe('fetcher', function() {
     });
 
     it("should be false if keys not passed in", function() {
-      fetcher.isMissingKeys(this.modelData, void 0).should.be.false;
+      fetcher.isMissingKeys(this.modelData).should.be.false;
       fetcher.isMissingKeys(this.modelData, []).should.be.false;
     });
 
@@ -565,7 +599,7 @@ describe('fetcher', function() {
       fetcher.isMissingKeys(this.modelData, ['id', 'name']).should.be.false;
     });
 
-    it("should be true if keys passed in are not present", function() {
+    it("should be true if any of the keys passed in is not present", function() {
       fetcher.isMissingKeys(this.modelData, 'city').should.be.true;
       fetcher.isMissingKeys(this.modelData, ['city']).should.be.true;
       fetcher.isMissingKeys(this.modelData, ['id', 'city']).should.be.true;
@@ -638,15 +672,15 @@ describe('fetcher', function() {
   });
 
   describe('checkFresh', function() {
-    describe('didCheckFresh', function() {
-      beforeEach(function() {
-        fetcher.checkedFreshTimestamps = {};
-        this.spec = {
-          model: 'foobutt',
-          params: {}
-        };
-      });
+    beforeEach(function() {
+      fetcher.checkedFreshTimestamps = {};
+      this.spec = {
+        model: 'foobutt',
+        params: {}
+      };
+    });
 
+    describe('didCheckFresh', function() {
       it("should store it properly", function() {
         var key;
 
@@ -657,14 +691,6 @@ describe('fetcher', function() {
     });
 
     describe('shouldCheckFresh', function() {
-      beforeEach(function() {
-        fetcher.checkedFreshTimestamps = {};
-        this.spec = {
-          model: 'foobutt',
-          params: {}
-        };
-      });
-
       it("should return true if timestamp doesn't exist", function() {
         fetcher.shouldCheckFresh(this.spec).should.be.true;
       });
@@ -685,6 +711,17 @@ describe('fetcher', function() {
         now = new Date().getTime();
         fetcher.checkedFreshTimestamps[key] = now - 1;
         fetcher.shouldCheckFresh(this.spec).should.be.false;
+      });
+    });
+
+    describe('checkedFreshKey', function () {
+      it('should use the model name and params as identifier', function () {
+        var spec = { model: 'SomeModel', params: { id: '123' } };
+        fetcher.checkedFreshKey(spec).should.equal('{"name":"SomeModel","params":{"id":"123"}}');
+      });
+      it('should use the model name and params as identifier', function () {
+        var spec = { collection: 'SomeCollection', params: { id: '123' } };
+        fetcher.checkedFreshKey(spec).should.equal('{"name":"SomeCollection","params":{"id":"123"}}');
       });
     });
   });
