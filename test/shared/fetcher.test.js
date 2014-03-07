@@ -105,7 +105,7 @@ function buildCollectionResponse(addJsonKey) {
   }
 }
 
-describe('fetcher', function() {
+describe.only('fetcher', function() {
   beforeEach(function() {
     this.app = new App(null, {modelUtils: modelUtils});
     fetcher = this.app.fetcher;
@@ -170,150 +170,106 @@ describe('fetcher', function() {
   });
 
   describe('hydrate', function() {
-    beforeEach(function() {
-      fetcher.modelStore.clear();
-      fetcher.collectionStore.clear();
-    });
-
-    it("should be able store and hydrate a model", function() {
-      var fetchSummary, hydrated, listing, rawListing, results;
-
-      rawListing = {
-        id: 9,
-        name: 'Sunny'
-      };
-      results = {
-        listing: new Listing(rawListing, {
-          app: this.app
-        })
-      };
-      fetchSummary = {
-        listing: {
-          model: 'listing',
-          id: 9
-        }
-      };
-      fetcher.storeResults(results);
-      fetcher.hydrate(fetchSummary, function(err, hydrated) {
-        listing = hydrated.listing;
-        listing.should.be.an.instanceOf(Listing);
-        listing.toJSON().should.eql(rawListing);
-      });
-    });
-
-    it("should be able to store and hydrate a collection", function() {
-      var fetchSummary, hydrated, listings, params, rawListings, results;
-
-      rawListings = [
-        {
-          id: 1,
-          name: 'Sunny'
-        }, {
-          id: 3,
-          name: 'Cloudy'
-        }, {
-          id: 99,
-          name: 'Tall'
-        }
-      ];
-      params = {
-        items_per_page: 99
-      };
-      results = {
-        listings: new Listings(rawListings, {
-          params: params,
-          app: this.app
-        })
-      };
-      fetchSummary = {
-        listings: {
-          collection: 'listings',
-          ids: _.pluck(rawListings, 'id'),
-          params: params
-        }
-      };
-      fetcher.storeResults(results);
-      fetcher.hydrate(fetchSummary, function(err, hydrated) {
-        listings = hydrated.listings;
-        listings.should.be.an.instanceOf(Listings);
-        listings.toJSON().should.eql(rawListings);
-        listings.params.should.eql(params);
-        should.not.exist(fetcher.collectionStore.get('Listings', {}));
-        fetcher.collectionStore.get('Listings', params).should.eql({
-          ids: listings.pluck('id'),
-          meta: {},
-          params: params
-        });
-      });
-    });
-
-    it("should be able to hydrate multiple objects at once", function() {
-      var fetchSummary, hydrated, listing, listings, rawListing, rawListings, results;
-
-      rawListing = {
-        id: 9,
-        name: 'Sunny'
-      };
-      rawListings = [
-        {
-          id: 1,
-          name: 'Sunny'
-        }, {
-          id: 3,
-          name: 'Cloudy'
-        }, {
-          id: 99,
-          name: 'Tall'
-        }
-      ];
-      results = {
-        listing: new Listing(rawListing, {
-          app: this.app
-        }),
-        listings: new Listings(rawListings, {
-          app: this.app
-        })
-      };
-      fetchSummary = {
-        listing: {
-          model: 'listing',
-          id: 9
+    var modelFetchSummary = {
+            model: 'SomeModel',
+            id: 123
         },
-        listings: {
-          collection: 'listings',
-          ids: [1, 3, 99]
-        }
+        collectionFetchSummary = {
+          collection: 'SomeCollection',
+          ids: [ 123, 456 ],
+          params: { some: 'params' }
+        },
+        modelResult = new BaseModel({ id: 123 }),
+        collectionStoreResult = _.extend({ meta: { some: 'meta' } }, collectionFetchSummary),
+        collectionResult = new BaseCollection([{ id: 123 }, { id: 456 }]);
+
+    beforeEach(function() {
+      fetcher.modelStore = {
+        get: sinon.stub()
       };
-      fetcher.storeResults(results);
-      fetcher.hydrate(fetchSummary, function(err, hydrated) {
-        listing = hydrated.listing;
-        listing.should.be.an.instanceOf(Listing);
-        listing.toJSON().should.deep.equal(rawListing);
-        listings = hydrated.listings;
-        listings.should.be.an.instanceOf(Listings);
-        listings.toJSON().should.deep.equal(rawListings);
+      fetcher.collectionStore = {
+        get: sinon.stub()
+      };
+    });
+
+    it("should be able hydrate a model from the modelStore", function (done) {
+      var fetchSummary = { listing: modelFetchSummary };
+
+      fetcher.modelStore.get.returns(modelResult);
+      fetcher.hydrate(fetchSummary, function (err, hydrated) {
+        should.not.exist(err);
+        hydrated.should.deep.equal({ listing: modelResult });
+        fetcher.modelStore.get.should.have.been.calledOnce;
+        fetcher.modelStore.get.should.have.been.calledWith('SomeModel', 123, true);
+        done();
       });
     });
 
-    it("should inject the app instance", function() {
-      var app, listing1, model, results, summaries;
+    it('should set the app property on the model if it is passed in the options', function (done) {
+      var fetchSummary = { listing: modelFetchSummary },
+          appInstance = {};
 
-      listing1 = new Listing({
-        id: 1
+      fetcher.modelStore.get.returns(modelResult);
+      fetcher.hydrate(fetchSummary, { app: appInstance }, function (err, hydrated) {
+        hydrated.listing.app.should.equal(appInstance);
+        done();
       });
-      fetcher.modelStore.set(listing1);
-      summaries = {
-        model: {
-          id: 1,
-          model: 'Listing'
-        }
-      };
-      app = {
-        fake: 'app'
-      };
-      fetcher.hydrate(summaries, {app: app}, function(err, results) {
-        model = results.model;
-        model.app.should.eql(app);
+    });
+
+    it('should be able to hydrate a collection from the collectionStore', function (done) {
+      var fetchSummary = { listings: collectionFetchSummary };
+
+      fetcher.collectionStore.get.yieldsAsync(collectionStoreResult);
+      fetcher.retrieveModelsForCollectionName = sinon.stub().returns(collectionResult.models);
+      fetcher.modelUtils.getCollection = sinon.stub().yields(collectionResult);
+
+      fetcher.hydrate(fetchSummary, function (err, hydrated) {
+        fetcher.collectionStore.get.should.have.been.calledOnce;
+        fetcher.collectionStore.get.should.have.been.calledWith('SomeCollection', { some: 'params' });
+        fetcher.retrieveModelsForCollectionName.should.have.been.calledOnce;
+        fetcher.retrieveModelsForCollectionName.should.have.been.calledWith('SomeCollection', [ 123, 456 ]);
+        fetcher.modelUtils.getCollection.should.have.been.calledOnce;
+        fetcher.modelUtils.getCollection.should.have.been.calledWith('SomeCollection', collectionResult.models);
+        hydrated.should.deep.equal({ listings: collectionResult });
+        done();
+      });
+    });
+
+    it('should set the app property on the collection if it is passed in the options', function (done) {
+      var fetchSummary = { listings: collectionFetchSummary },
+          appInstance = {};
+
+      fetcher.collectionStore.get.yieldsAsync(collectionStoreResult);
+      fetcher.retrieveModelsForCollectionName = sinon.stub().returns(collectionResult.models);
+      fetcher.modelUtils.getCollection = sinon.stub().yields(collectionResult);
+
+      fetcher.hydrate(fetchSummary, { app: appInstance }, function (err, hydrated) {
+        hydrated.listings.app.should.equal(appInstance);
+        done();
+      });
+    });
+
+    it('should throw an error if a collection cannot be found in the collection store', function () {
+      var fetchSummary = { listings: collectionFetchSummary };
+
+      fetcher.collectionStore.get.yields(undefined);
+
+      (function () {
+        fetcher.hydrate(fetchSummary, function () {});
+      }).should.throw('Collection of type "SomeCollection" not found for params: ' + JSON.stringify(collectionFetchSummary.params));
+    });
+
+    it('should be able to hydrate a mixed spec', function (done) {
+      var fetchSummary = { listing: modelFetchSummary, listings: collectionFetchSummary };
+
+      fetcher.modelStore.get.returns(modelResult);
+      fetcher.collectionStore.get.yieldsAsync(collectionStoreResult);
+      fetcher.retrieveModelsForCollectionName = sinon.stub().returns(collectionResult.models);
+      fetcher.modelUtils.getCollection = sinon.stub().yieldsAsync(collectionResult);
+
+      fetcher.hydrate(fetchSummary, function (err, hydrated) {
+        hydrated.should.deep.equal({ listings: collectionResult, listing: modelResult });
+        done();
       });
     });
   });
