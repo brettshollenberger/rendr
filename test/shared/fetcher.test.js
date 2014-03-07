@@ -14,97 +14,6 @@ var _ = require('underscore'),
 
 chai.use(sinonChai);
 
-var listingResponses = {
-  basic: {
-    name: 'Fetching!'
-  },
-  full: {
-    name: 'Fetching!',
-    city: 'San Francisco'
-  }
-};
-
-var Listing = BaseModel.extend({
-  jsonKey: 'listing',
-
-  fetch: function(options) {
-    var resp,
-      _this = this;
-
-    resp = getModelResponse('full', options.data.id, true);
-    setTimeout(function() {
-      var parsed = _this.parse(resp);
-      _this.set(parsed);
-      options.success(_this, parsed);
-    }, 1);
-  }
-});
-Listing.id = 'Listing';
-
-var Listings = BaseCollection.extend({
-  model: Listing,
-  jsonKey: 'listings',
-
-  fetch: function(options) {
-    var resp,
-      _this = this;
-
-    resp = buildCollectionResponse(true);
-    if (options.data != null) {
-      resp.meta = options.data;
-    }
-    setTimeout(function() {
-      var parsed = _this.parse(resp);
-      _this.reset(parsed.map(function(attrs) {
-        return new _this.model(attrs, {
-          parse: true
-        });
-      }));
-      options.success(_this, parsed);
-    }, 1);
-  }
-});
-Listings.id = 'Listings';
-
-addClassMapping.add('Listing', Listing);
-addClassMapping.add('Listings', Listings);
-
-function getModelResponse(version, id, addJsonKey) {
-  var resp;
-
-  if (addJsonKey == null) {
-    addJsonKey = false;
-  }
-  resp = _.extend({}, listingResponses[version], {
-    id: id
-  });
-  if (addJsonKey) {
-    return _.tap({}, function(obj) {
-      obj.listing = resp;
-    });
-  } else {
-    return resp;
-  }
-}
-
-function buildCollectionResponse(addJsonKey) {
-  var resp;
-
-  if (addJsonKey == null) {
-    addJsonKey = false;
-  }
-  resp = [1, 2, 3, 4, 5].map(function(id) {
-    return getModelResponse('basic', id, addJsonKey);
-  });
-  if (addJsonKey) {
-    return _.tap({}, function(obj) {
-      obj.listings = resp;
-    });
-  } else {
-    return resp;
-  }
-}
-
 describe.only('fetcher', function() {
   beforeEach(function() {
     this.app = new App(null, {modelUtils: modelUtils});
@@ -424,40 +333,46 @@ describe.only('fetcher', function() {
 
   describe('summarize', function() {
     it("should summarize a model", function() {
-      var attrs, model, summary;
+      var attrs, model, summary, Model;
+
+      Model = BaseModel.extend({});
+      Model.id = 'SomeModel';
 
       attrs = {
         id: 1234,
         blahblah: 'boomtown'
       };
-      model = new Listing(attrs);
+
+      model = new Model(attrs);
       summary = fetcher.summarize(model);
-      summary.model.should.eql('listing');
+      summary.model.should.eql('some_model');
       summary.id.should.eql(attrs.id);
     });
 
     it("should support custom idAttribute", function() {
-      var attrs, model, summary, CustomListing;
+      var attrs, model, summary, Model;
 
       attrs = {
         login: 'joeschmo',
         blahblah: 'boomtown'
       };
 
-      CustomListing = BaseModel.extend({
+      Model = BaseModel.extend({
         idAttribute: 'login'
       });
-      CustomListing.id = 'CustomListing';
+      Model.id = 'SomeModel';
 
-      model = new CustomListing(attrs);
+      model = new Model(attrs);
       summary = fetcher.summarize(model);
-      summary.model.should.eql('custom_listing');
+      summary.model.should.eql('some_model');
       summary.id.should.eql(attrs.login);
     });
 
     it("should summarize a collection", function() {
-      var collection, meta, models, params, summary;
+      var collection, meta, models, params, summary, Collection;
 
+      Collection = BaseCollection.extend({});
+      Collection.id = 'SomeCollection';
       models = [
         {
           id: 1,
@@ -475,12 +390,12 @@ describe.only('fetcher', function() {
         the: 'one',
         foo: 'butt'
       };
-      collection = new Listings(models, {
+      collection = new Collection(models, {
         params: params,
         meta: meta
       });
       summary = fetcher.summarize(collection);
-      summary.collection.should.eql('listings');
+      summary.collection.should.eql('some_collection');
       summary.ids.should.eql([1, 2]);
       summary.params.should.eql(params);
       summary.meta.should.eql(meta);
